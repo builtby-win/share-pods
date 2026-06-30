@@ -138,6 +138,7 @@ final class SharePodsStateTests: XCTestCase {
 
         XCTAssertNil(state.issueMessage)
         XCTAssertEqual(state.mode, .ready)
+        XCTAssertEqual(store.loadKnownDevices().map(\.uid), ["alpha", "bravo"])
     }
 
     func testStopSharingFailurePreservesRetryState() {

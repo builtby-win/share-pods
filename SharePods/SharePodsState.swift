@@ -314,6 +314,7 @@ final class SharePodsState: ObservableObject {
                 knownDevices: knownDevices,
                 sharingDeviceUIDs: sharingDeviceUIDs
             )
+            store.upsertKnownDevices(devices)
             operationIssueMessage = nil
             updateIssueMessage()
 

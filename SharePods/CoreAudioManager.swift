@@ -102,15 +102,11 @@ final class CoreAudioManager: CoreAudioManaging {
     }
 
     func stopSharing(restoring previousOutputUID: String?) throws {
-        guard let previousOutputUID else {
-            throw CoreAudioError.outputDeviceNotFound("previous output")
+        if let previousOutputUID,
+           let deviceID = try? translateUIDToDeviceID(previousOutputUID) {
+            try? setDefaultOutputDevice(deviceID)
         }
 
-        guard let deviceID = try translateUIDToDeviceID(previousOutputUID) else {
-            throw CoreAudioError.outputDeviceNotFound(previousOutputUID)
-        }
-
-        try setDefaultOutputDevice(deviceID)
         try destroyExistingAggregateIfNeeded()
     }
 
