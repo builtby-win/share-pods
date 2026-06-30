@@ -111,6 +111,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				000000000000000000000029 /* PBXTargetDependency */,
 			);
 			name = SharePodsTests;
 			packageProductDependencies = (
@@ -120,6 +121,25 @@
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		000000000000000000000028 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000016 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000000000014 /* SharePods */;
+			remoteInfo = SharePods;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		000000000000000000000029 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000000000014 /* SharePods */;
+			targetProxy = 000000000000000000000028 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 
 /* Begin PBXProject section */
 		000000000000000000000016 /* Project object */ = {

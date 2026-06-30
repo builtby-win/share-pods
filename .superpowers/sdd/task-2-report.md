@@ -41,3 +41,7 @@ Task 2 is complete.
 - Root cause: `SharePods.xcodeproj/project.pbxproj` reused `00000000000000000000000C` and `00000000000000000000000D` for Task 2-added file objects, colliding with the existing `PBXFrameworksBuildPhase` objects and causing `-[PBXFrameworksBuildPhase group]` during project load.
 - Fix: reassigned `SharePodsStateTests.swift` to `000000000000000000000026` and `MockDevice.swift in Sources` to `000000000000000000000027`, then updated the group child, file reference, and app sources phase reference consistently.
 - No Swift source behavior changed.
+
+## Task 2 dependency wiring fix
+- Root cause: `SharePodsTests` had an empty `dependencies` array in `SharePods.xcodeproj/project.pbxproj`, so Xcode had no `PBXTargetDependency`/`PBXContainerItemProxy` edge from the test target to the app target even though the tests use `@testable import SharePods`.
+- Fix: added the normal Xcode target dependency from `SharePodsTests` to `SharePods` in the project file, without changing Swift sources, target membership, or the scheme.
