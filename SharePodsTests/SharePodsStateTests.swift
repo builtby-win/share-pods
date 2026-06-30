@@ -123,6 +123,61 @@ final class SharePodsStateTests: XCTestCase {
         )
     }
 
+    func testSuccessfulRefreshClearsTransientOperationIssue() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.refreshError = CoreAudioError.deviceEnumerationFailed(-1)
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        XCTAssertEqual(state.mode, .issue)
+
+        coreAudio.refreshError = nil
+        state.refresh()
+
+        XCTAssertNil(state.issueMessage)
+        XCTAssertEqual(state.mode, .ready)
+    }
+
+    func testStopSharingFailurePreservesRetryState() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        state.startSharing()
+        XCTAssertEqual(state.mode, .sharing)
+
+        coreAudio.stopError = CoreAudioError.defaultOutputWriteFailed(-1)
+        state.stopSharing()
+
+        XCTAssertEqual(state.mode, .issue)
+        XCTAssertTrue(state.isSharingActive)
+        XCTAssertEqual(state.devices.filter(\.isSharing).count, 2)
+
+        state.reset()
+        XCTAssertEqual(coreAudio.stopCallCount, 2)
+        XCTAssertTrue(state.isSharingActive)
+    }
+
+    func testSuccessfulStopSharingClearsSharingState() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        state.startSharing()
+        state.stopSharing()
+
+        XCTAssertEqual(coreAudio.stopCallCount, 1)
+        XCTAssertFalse(state.isSharingActive)
+        XCTAssertEqual(state.devices.filter(\.isSharing).count, 0)
+        XCTAssertEqual(state.mode, .ready)
+    }
+
     func testKnownDevicesStoreRoundTripsThroughIsolatedUserDefaults() {
         let suiteName = "SharePodsTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -154,5 +209,48 @@ final class SharePodsStateTests: XCTestCase {
         XCTAssertEqual(reloadedDevices.first?.name, "Alpha")
         XCTAssertEqual(reloadedDevices.first?.lastSeen, lastSeen)
         XCTAssertFalse(reloadedDevices.first?.isConnected ?? true)
+    }
+
+    private func makeIsolatedStore() -> (KnownDevicesStore, () -> Void) {
+        let suiteName = "SharePodsTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        return (
+            KnownDevicesStore(userDefaults: defaults),
+            { defaults.removePersistentDomain(forName: suiteName) }
+        )
+    }
+}
+
+private final class TestCoreAudioManager: CoreAudioManaging {
+    var outputDevices = [
+        AudioOutputDevice(uid: "alpha", name: "Alpha", isConnected: true),
+        AudioOutputDevice(uid: "bravo", name: "Bravo", isConnected: true)
+    ]
+    var refreshError: Error?
+    var currentOutputUID: String? = "system-output"
+    var stopError: Error?
+    private(set) var stopCallCount = 0
+
+    func refreshOutputDevices() throws -> [AudioOutputDevice] {
+        if let refreshError {
+            throw refreshError
+        }
+
+        return outputDevices
+    }
+
+    func currentDefaultOutputDeviceUID() throws -> String? {
+        currentOutputUID
+    }
+
+    func startSharing(using subdeviceUIDs: [String]) throws {}
+
+    func stopSharing(restoring previousOutputUID: String?) throws {
+        stopCallCount += 1
+        if let stopError {
+            throw stopError
+        }
     }
 }

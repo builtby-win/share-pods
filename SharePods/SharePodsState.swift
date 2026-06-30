@@ -99,6 +99,10 @@ final class SharePodsState: ObservableObject {
         issueMessage ?? mode.message
     }
 
+    var isSharingActive: Bool {
+        !sharingDeviceUIDs.isEmpty
+    }
+
     func refresh() {
         _ = refreshDevices(triggerAutoShare: true)
     }
@@ -160,19 +164,23 @@ final class SharePodsState: ObservableObject {
         do {
             try coreAudio.stopSharing(restoring: store.previousOutputUID)
             operationIssueMessage = nil
+            sharingDeviceUIDs = []
+            devices = Self.sortDevices(Self.applySharingState(to: devices, sharingDeviceUIDs: sharingDeviceUIDs))
+            updateIssueMessage()
+            store.upsertKnownDevices(devices)
         } catch {
             operationIssueMessage = error.localizedDescription
+            updateIssueMessage()
         }
-
-        sharingDeviceUIDs = []
-        devices = Self.sortDevices(Self.applySharingState(to: devices, sharingDeviceUIDs: sharingDeviceUIDs))
-        updateIssueMessage()
-        store.upsertKnownDevices(devices)
     }
 
     func reset() {
+        guard sharingDeviceUIDs.isEmpty else {
+            stopSharing()
+            return
+        }
+
         operationIssueMessage = nil
-        sharingDeviceUIDs = []
         devices = Self.sortDevices(Self.applySharingState(to: devices, sharingDeviceUIDs: sharingDeviceUIDs))
         updateIssueMessage()
         _ = refreshDevices(triggerAutoShare: true)
@@ -306,7 +314,7 @@ final class SharePodsState: ObservableObject {
                 knownDevices: knownDevices,
                 sharingDeviceUIDs: sharingDeviceUIDs
             )
-            store.upsertKnownDevices(devices)
+            operationIssueMessage = nil
             updateIssueMessage()
 
             if triggerAutoShare {

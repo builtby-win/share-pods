@@ -89,7 +89,7 @@ struct SharePodsPopover: View {
         case .sharing:
             return "Stop Sharing"
         case .issue:
-            return "Reset"
+            return state.isSharingActive ? "Stop Sharing" : "Reset"
         }
     }
 
@@ -115,7 +115,11 @@ struct SharePodsPopover: View {
         case .sharing:
             state.stopSharing()
         case .issue:
-            state.reset()
+            if state.isSharingActive {
+                state.stopSharing()
+            } else {
+                state.reset()
+            }
         }
     }
 }

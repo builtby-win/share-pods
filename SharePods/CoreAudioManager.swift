@@ -111,6 +111,7 @@ final class CoreAudioManager: CoreAudioManaging {
         }
 
         try setDefaultOutputDevice(deviceID)
+        try destroyExistingAggregateIfNeeded()
     }
 
     static func aggregateDeviceDescription(for subdeviceUIDs: [String]) -> [String: Any] {
