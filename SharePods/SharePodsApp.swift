@@ -16,7 +16,10 @@ struct SharePodsApp: App {
         MenuBarExtra {
             SharePodsPopover(state: state)
         } label: {
-            Label("SharePods", systemImage: state.mode.menuBarSystemImage)
+            HStack(spacing: 4) {
+                Image(systemName: state.mode.menuBarSystemImage)
+                Text("SharePods")
+            }
         }
         .menuBarExtraStyle(.window)
     }
