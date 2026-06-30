@@ -90,22 +90,7 @@ final class CoreAudioManager: CoreAudioManaging {
 
         try destroyExistingAggregateIfNeeded()
 
-        let subdevices: [[String: Any]] = filteredUIDs.map { uid in
-            [
-                kAudioSubDeviceUIDKey as String: uid,
-                kAudioSubDeviceDriftCompensationKey as String: NSNumber(value: 0),
-                kAudioSubDeviceDriftCompensationQualityKey as String: NSNumber(value: 0)
-            ]
-        }
-
-        let description: [String: Any] = [
-            kAudioAggregateDeviceUIDKey as String: SharePodsAudioConstants.aggregateUID,
-            kAudioAggregateDeviceNameKey as String: SharePodsAudioConstants.aggregateName,
-            kAudioAggregateDeviceSubDeviceListKey as String: subdevices,
-            kAudioAggregateDeviceIsPrivateKey as String: NSNumber(value: 0),
-            kAudioAggregateDeviceIsStackedKey as String: NSNumber(value: 0),
-            kAudioAggregateDeviceMainSubDeviceKey as String: filteredUIDs[0]
-        ]
+        let description = Self.aggregateDeviceDescription(for: filteredUIDs)
 
         var aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
         let creationStatus = AudioHardwareCreateAggregateDevice(description as CFDictionary, &aggregateDeviceID)
@@ -128,8 +113,31 @@ final class CoreAudioManager: CoreAudioManaging {
         try setDefaultOutputDevice(deviceID)
     }
 
+    static func aggregateDeviceDescription(for subdeviceUIDs: [String]) -> [String: Any] {
+        let subdevices = subdeviceUIDs.enumerated().map { index, uid in
+            [
+                kAudioSubDeviceUIDKey as String: uid,
+                kAudioSubDeviceDriftCompensationKey as String: NSNumber(value: index == 0 ? 0 : 1),
+                kAudioSubDeviceDriftCompensationQualityKey as String: NSNumber(
+                    value: index == 0
+                        ? kAudioAggregateDriftCompensationMinQuality
+                        : kAudioAggregateDriftCompensationMediumQuality
+                )
+            ]
+        }
+
+        return [
+            kAudioAggregateDeviceUIDKey as String: SharePodsAudioConstants.aggregateUID,
+            kAudioAggregateDeviceNameKey as String: SharePodsAudioConstants.aggregateName,
+            kAudioAggregateDeviceSubDeviceListKey as String: subdevices,
+            kAudioAggregateDeviceIsPrivateKey as String: NSNumber(value: 0),
+            kAudioAggregateDeviceIsStackedKey as String: NSNumber(value: 0),
+            kAudioAggregateDeviceMainSubDeviceKey as String: subdeviceUIDs[0]
+        ]
+    }
+
     private func fetchDeviceIDs() throws -> [AudioObjectID] {
-        let address = AudioObjectPropertyAddress(
+        var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
@@ -171,7 +179,7 @@ final class CoreAudioManager: CoreAudioManaging {
     }
 
     private func currentDefaultOutputDeviceID() throws -> AudioObjectID? {
-        let address = AudioObjectPropertyAddress(
+        var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
@@ -213,7 +221,7 @@ final class CoreAudioManager: CoreAudioManaging {
 
     private func setSystemOutputDevice(_ deviceID: AudioObjectID, selector: AudioObjectPropertySelector) throws {
         var mutableDeviceID = deviceID
-        let address = AudioObjectPropertyAddress(
+        var address = AudioObjectPropertyAddress(
             mSelector: selector,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
@@ -233,7 +241,7 @@ final class CoreAudioManager: CoreAudioManaging {
     }
 
     private func isOutputCapable(_ deviceID: AudioObjectID) -> Bool {
-        let address = AudioObjectPropertyAddress(
+        var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyStreamConfiguration,
             mScope: kAudioObjectPropertyScopeOutput,
             mElement: kAudioObjectPropertyElementMain
@@ -265,16 +273,22 @@ final class CoreAudioManager: CoreAudioManaging {
     }
 
     private func copyStringProperty(deviceID: AudioObjectID, selector: AudioObjectPropertySelector) -> String? {
-        let address = AudioObjectPropertyAddress(
+        var address = AudioObjectPropertyAddress(
             mSelector: selector,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
 
-        var value = "" as CFString
-        var size = UInt32(MemoryLayout<CFString>.size)
-        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
-        guard status == noErr else {
+        let storage = UnsafeMutablePointer<CFString?>.allocate(capacity: 1)
+        storage.initialize(to: nil)
+        defer {
+            storage.deinitialize(count: 1)
+            storage.deallocate()
+        }
+
+        var size = UInt32(MemoryLayout<CFString?>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, storage)
+        guard status == noErr, let value = storage.pointee else {
             return nil
         }
 
@@ -282,7 +296,7 @@ final class CoreAudioManager: CoreAudioManaging {
     }
 
     private func translateUIDToDeviceID(_ uid: String) throws -> AudioObjectID? {
-        let address = AudioObjectPropertyAddress(
+        var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain

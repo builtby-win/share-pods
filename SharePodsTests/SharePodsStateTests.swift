@@ -1,3 +1,4 @@
+import CoreAudio
 import XCTest
 @testable import SharePods
 
@@ -100,6 +101,25 @@ final class SharePodsStateTests: XCTestCase {
                 sharingDeviceUIDs: [],
                 issueMessage: "Boom"
             )
+        )
+    }
+
+    func testAggregateDescriptionMirrorsAudioAndDriftCorrectsSecondaryDevices() {
+        let description = CoreAudioManager.aggregateDeviceDescription(for: ["alpha", "bravo", "charlie"])
+        let subdevices = description[kAudioAggregateDeviceSubDeviceListKey as String] as? [[String: Any]]
+
+        XCTAssertEqual(description[kAudioAggregateDeviceUIDKey as String] as? String, SharePodsAudioConstants.aggregateUID)
+        XCTAssertEqual(description[kAudioAggregateDeviceNameKey as String] as? String, SharePodsAudioConstants.aggregateName)
+        XCTAssertEqual(description[kAudioAggregateDeviceMainSubDeviceKey as String] as? String, "alpha")
+        XCTAssertEqual((description[kAudioAggregateDeviceIsStackedKey as String] as? NSNumber)?.intValue, 0)
+        XCTAssertEqual(subdevices?.count, 3)
+        XCTAssertEqual(subdevices?[0][kAudioSubDeviceUIDKey as String] as? String, "alpha")
+        XCTAssertEqual((subdevices?[0][kAudioSubDeviceDriftCompensationKey as String] as? NSNumber)?.intValue, 0)
+        XCTAssertEqual((subdevices?[1][kAudioSubDeviceDriftCompensationKey as String] as? NSNumber)?.intValue, 1)
+        XCTAssertEqual((subdevices?[2][kAudioSubDeviceDriftCompensationKey as String] as? NSNumber)?.intValue, 1)
+        XCTAssertEqual(
+            (subdevices?[1][kAudioSubDeviceDriftCompensationQualityKey as String] as? NSNumber)?.uint32Value,
+            kAudioAggregateDriftCompensationMediumQuality
         )
     }
 
