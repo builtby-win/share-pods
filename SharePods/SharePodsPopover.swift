@@ -8,8 +8,6 @@ struct SharePodsPopover: View {
             header
             devicesSection
             primaryActions
-            Divider()
-            mockControls
         }
         .padding(18)
         .frame(width: 360)
@@ -27,7 +25,7 @@ struct SharePodsPopover: View {
                 Text(state.mode.title)
                     .font(.headline)
 
-                Text(state.mode.message)
+                Text(state.statusMessage)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -42,8 +40,15 @@ struct SharePodsPopover: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            ForEach(state.sortedDevices) { device in
-                DeviceCard(device: device)
+            if state.sortedDevices.isEmpty {
+                Text("No output devices found.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 6)
+            } else {
+                ForEach(state.sortedDevices) { device in
+                    DeviceCard(device: device)
+                }
             }
         }
     }
@@ -57,34 +62,21 @@ struct SharePodsPopover: View {
             .controlSize(.large)
             .disabled(state.mode == .idle)
 
-            Toggle("Auto-share next time", isOn: $state.autoShareNextTime)
+            HStack(spacing: 12) {
+                Toggle("Auto-share", isOn: Binding(
+                    get: { state.autoShareEnabled },
+                    set: { state.setAutoShareEnabled($0) }
+                ))
                 .toggleStyle(.switch)
-                .disabled(state.mode == .idle || state.mode == .issue)
-        }
-    }
 
-    private var mockControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Mock controls")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
+                Spacer(minLength: 8)
 
-            HStack(spacing: 8) {
-                Button("Add second device") {
-                    state.addSecondDevice()
+                Button("Refresh") {
+                    state.refresh()
                 }
-                .disabled(state.mode != .idle)
-                Button("Disconnect") {
-                    state.simulateDisconnect()
-                }
-
-                Button("Reset") {
-                    state.reset()
-                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
         }
     }
 

@@ -1,11 +1,17 @@
 import SwiftUI
 
 struct DeviceCard: View {
-    let device: MockDevice
+    let device: AudioOutputDevice
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "airpodspro")
+            Image(systemName: "speaker.wave.2")
                 .font(.system(size: 22, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(device.isConnected ? .primary : .secondary)
@@ -36,15 +42,15 @@ struct DeviceCard: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08))
         }
-        .opacity(device.isConnected ? 1 : 0.52)
+        .opacity(device.isConnected ? 1 : 0.54)
     }
 
     private var subtitle: String {
-        guard let batteryPercent = device.batteryPercent else {
-            return device.isConnected ? "Connected" : "Last seen recently"
+        if device.isConnected {
+            return "Connected · Last seen just now"
         }
 
-        return "Battery \(batteryPercent)%"
+        return "Last seen \(Self.relativeFormatter.localizedString(for: device.lastSeen, relativeTo: .now))"
     }
 
     private var statusColor: Color {
@@ -61,8 +67,22 @@ struct DeviceCard: View {
 
 #Preview {
     VStack(spacing: 10) {
-        DeviceCard(device: MockDevice.initialDevices[0])
-        DeviceCard(device: MockDevice.initialDevices[1])
+        DeviceCard(
+            device: AudioOutputDevice(
+                uid: "00000000-0000-0000-0000-000000000001",
+                name: "Winston’s AirPods Pro",
+                lastSeen: .now,
+                isConnected: true
+            )
+        )
+        DeviceCard(
+            device: AudioOutputDevice(
+                uid: "00000000-0000-0000-0000-000000000002",
+                name: "Beats Fit Pro",
+                lastSeen: .now.addingTimeInterval(-3_600),
+                isConnected: false
+            )
+        )
     }
     .padding()
     .frame(width: 360)
