@@ -36,3 +36,8 @@ Task 2 is complete.
 
 ## Notes
 - `SharePodsState.swift` imports `Combine` so `ObservableObject` and `@Published` resolve cleanly in this file.
+
+## Task 2 fix
+- Root cause: `SharePods.xcodeproj/project.pbxproj` reused `00000000000000000000000C` and `00000000000000000000000D` for Task 2-added file objects, colliding with the existing `PBXFrameworksBuildPhase` objects and causing `-[PBXFrameworksBuildPhase group]` during project load.
+- Fix: reassigned `SharePodsStateTests.swift` to `000000000000000000000026` and `MockDevice.swift in Sources` to `000000000000000000000027`, then updated the group child, file reference, and app sources phase reference consistently.
+- No Swift source behavior changed.
