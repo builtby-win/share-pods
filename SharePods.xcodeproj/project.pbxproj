@@ -10,7 +10,6 @@
 		000000000000000000000007 /* SharePodsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000001 /* SharePodsApp.swift */; };
 		000000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000002 /* Assets.xcassets */; };
 		000000000000000000000009 /* SharePodsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000003 /* SharePodsTests.swift */; };
-		00000000000000000000000A /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000B /* XCTest.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -19,7 +18,6 @@
 		000000000000000000000003 /* SharePodsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePodsTests.swift; sourceTree = "<group>"; };
 		000000000000000000000004 /* SharePods.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SharePods.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000005 /* SharePodsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SharePodsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		00000000000000000000000B /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = XCTest.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -34,7 +32,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				00000000000000000000000A /* XCTest.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

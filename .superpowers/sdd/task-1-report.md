@@ -48,3 +48,17 @@ Those controller-level gates were intentionally left for later verification, per
 ## Outcome
 
 The repository now contains the expected `SharePods.xcodeproj` skeleton plus starter app/test files, ready for the controller to inspect with Xcode tooling.
+
+## Fix for review finding
+
+I removed the manual `XCTest.framework` file reference and its explicit framework build-phase entry from `SharePodsTests` so the test target no longer links an invalid `SDKROOT`-based framework path.
+
+## Verification left to controller
+
+Per instruction, I did **not** run:
+
+- `xcodebuild -list`
+- `xcodebuild build`
+- any tests, lint gates, or formatter runs
+
+Those gates were intentionally skipped for controller-side verification.
