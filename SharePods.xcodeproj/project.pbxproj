@@ -11,6 +11,8 @@
 		000000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000002 /* Assets.xcassets */; };
 		000000000000000000000027 /* MockDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000A /* MockDevice.swift */; };
 		00000000000000000000000E /* SharePodsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000B /* SharePodsState.swift */; };
+		00000000000000000000002A /* DeviceCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000002C /* DeviceCard.swift */; };
+		00000000000000000000002B /* SharePodsPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000002D /* SharePodsPopover.swift */; };
 		00000000000000000000000F /* SharePodsStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000026 /* SharePodsStateTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -19,6 +21,8 @@
 		000000000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		00000000000000000000000A /* MockDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockDevice.swift; sourceTree = "<group>"; };
 		00000000000000000000000B /* SharePodsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePodsState.swift; sourceTree = "<group>"; };
+		00000000000000000000002C /* DeviceCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCard.swift; sourceTree = "<group>"; };
+		00000000000000000000002D /* SharePodsPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePodsPopover.swift; sourceTree = "<group>"; };
 		000000000000000000000026 /* SharePodsStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharePodsStateTests.swift; sourceTree = "<group>"; };
 		000000000000000000000004 /* SharePods.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SharePods.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000005 /* SharePodsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SharePodsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -57,6 +61,8 @@
 				000000000000000000000001 /* SharePodsApp.swift */,
 				00000000000000000000000A /* MockDevice.swift */,
 				00000000000000000000000B /* SharePodsState.swift */,
+				00000000000000000000002C /* DeviceCard.swift */,
+				00000000000000000000002D /* SharePodsPopover.swift */,
 				000000000000000000000002 /* Assets.xcassets */,
 			);
 			path = SharePods;
@@ -196,6 +202,8 @@
 				000000000000000000000007 /* SharePodsApp.swift in Sources */,
 				000000000000000000000027 /* MockDevice.swift in Sources */,
 				00000000000000000000000E /* SharePodsState.swift in Sources */,
+				00000000000000000000002A /* DeviceCard.swift in Sources */,
+				00000000000000000000002B /* SharePodsPopover.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
