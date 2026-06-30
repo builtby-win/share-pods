@@ -119,19 +119,19 @@ Run in Xcode:
 Build from terminal:
 
 ```bash
-xcodebuild -project SharePods.xcodeproj -scheme SharePods -configuration Debug build
+xcodebuild -project SharePods.xcodeproj -scheme SharePods -configuration Debug -derivedDataPath build build
 ```
 
 Test from terminal:
 
 ```bash
-xcodebuild test -project SharePods.xcodeproj -scheme SharePods -destination 'platform=macOS'
+xcodebuild test -project SharePods.xcodeproj -scheme SharePods -destination 'platform=macOS' -derivedDataPath build
 ```
 
 Run the built app from terminal after a Debug build:
 
 ```bash
-open build/Debug/SharePods.app
+open build/Build/Products/Debug/SharePods.app
 ```
 
 There is no Node-style dev server for native SwiftUI. Use Xcode Previews for fast individual view iteration and `Cmd+R` for real menu bar behavior. A helper script that wraps `xcodebuild && open` can be added later only if the raw commands become annoying.
