@@ -27,4 +27,20 @@ final class SharePodsStateTests: XCTestCase {
         XCTAssertEqual(state.connectedDevices.count, 1)
         XCTAssertFalse(state.autoShareNextTime)
     }
+
+    func testAddSecondDeviceDoesNothingWhileSharing() {
+        let state = SharePodsState()
+
+        state.addSecondDevice()
+        state.startSharing()
+
+        let connectedCount = state.connectedDevices.count
+        let sharingCount = state.devices.filter(\.isSharing).count
+
+        state.addSecondDevice()
+
+        XCTAssertEqual(state.mode, .sharing)
+        XCTAssertEqual(state.connectedDevices.count, connectedCount)
+        XCTAssertEqual(state.devices.filter(\.isSharing).count, sharingCount)
+    }
 }

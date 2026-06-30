@@ -74,7 +74,7 @@ struct SharePodsPopover: View {
                 Button("Add second device") {
                     state.addSecondDevice()
                 }
-
+                .disabled(state.mode != .idle)
                 Button("Disconnect") {
                     state.simulateDisconnect()
                 }

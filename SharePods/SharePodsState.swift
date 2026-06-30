@@ -94,6 +94,10 @@ final class SharePodsState: ObservableObject {
     }
 
     func addSecondDevice() {
+        guard mode == .idle else {
+            return
+        }
+
         guard let index = devices.firstIndex(where: { !$0.isConnected }) else {
             return
         }
