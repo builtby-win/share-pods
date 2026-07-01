@@ -27,6 +27,6 @@
 	<key>SUFeedURL</key>
 	<string>https://github.com/builtby-win/share-pods/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_WITH_SPARKLE_PUBLIC_ED_KEY</string>
+	<string>Qkdm4Od4yxn2Pn5De2mwrBDvLotkmcHi8Sy/xQqqanM=</string>
 </dict>
 </plist>

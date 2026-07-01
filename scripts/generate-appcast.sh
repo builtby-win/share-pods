@@ -12,10 +12,18 @@ download_url_prefix="https://github.com/${GH_REPO}/releases/download/v${VERSION}
 
 find_sparkle_tool() {
     local tool_name="$1"
-    local root candidate
+    local root candidate scheme_project
 
     for root in "${DERIVED_DATA_PATH:-}" "${DERIVED_DATA_DIR:-}" "$repo_root/build" "$HOME/Library/Developer/Xcode/DerivedData"; do
-        [[ -n "$root" && -d "$root/SourcePackages/checkouts" ]] || continue
+        [[ -n "$root" ]] || continue
+
+        candidate="$(find "$root" -path '*/Build/Products/*' -type f -name "$tool_name" -perm -111 -print -quit 2>/dev/null || true)"
+        if [[ -n "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+
+        [[ -d "$root/SourcePackages/checkouts" ]] || continue
         candidate="$(find "$root/SourcePackages/checkouts" -type f -name "$tool_name" -perm -111 -print -quit 2>/dev/null || true)"
         if [[ -n "$candidate" ]]; then
             printf '%s\n' "$candidate"
@@ -26,6 +34,16 @@ find_sparkle_tool() {
     if command -v "$tool_name" >/dev/null 2>&1; then
         command -v "$tool_name"
         return 0
+    fi
+
+    scheme_project="$(find "$repo_root/build" "$HOME/Library/Developer/Xcode/DerivedData" -path '*/SourcePackages/checkouts/Sparkle/Sparkle.xcodeproj' -print -quit 2>/dev/null || true)"
+    if [[ -n "$scheme_project" ]]; then
+        xcodebuild -project "$scheme_project" -scheme "$tool_name" -configuration Release -derivedDataPath "$repo_root/build/SparkleTools" build >/dev/null
+        candidate="$(find "$repo_root/build/SparkleTools/Build/Products" -type f -name "$tool_name" -perm -111 -print -quit 2>/dev/null || true)"
+        if [[ -n "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
     fi
 
     return 1

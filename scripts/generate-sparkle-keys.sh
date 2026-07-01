@@ -5,10 +5,18 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 find_sparkle_tool() {
     local tool_name="$1"
-    local root candidate
+    local root candidate scheme_project
 
     for root in "${DERIVED_DATA_PATH:-}" "${DERIVED_DATA_DIR:-}" "$repo_root/build" "$HOME/Library/Developer/Xcode/DerivedData"; do
-        [[ -n "$root" && -d "$root/SourcePackages/checkouts" ]] || continue
+        [[ -n "$root" ]] || continue
+
+        candidate="$(find "$root" -path '*/Build/Products/*' -type f -name "$tool_name" -perm -111 -print -quit 2>/dev/null || true)"
+        if [[ -n "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+
+        [[ -d "$root/SourcePackages/checkouts" ]] || continue
         candidate="$(find "$root/SourcePackages/checkouts" -type f -name "$tool_name" -perm -111 -print -quit 2>/dev/null || true)"
         if [[ -n "$candidate" ]]; then
             printf '%s\n' "$candidate"
@@ -21,6 +29,16 @@ find_sparkle_tool() {
         return 0
     fi
 
+    scheme_project="$(find "$repo_root/build" "$HOME/Library/Developer/Xcode/DerivedData" -path '*/SourcePackages/checkouts/Sparkle/Sparkle.xcodeproj' -print -quit 2>/dev/null || true)"
+    if [[ -n "$scheme_project" ]]; then
+        xcodebuild -project "$scheme_project" -scheme "$tool_name" -configuration Release -derivedDataPath "$repo_root/build/SparkleTools" build >/dev/null
+        candidate="$(find "$repo_root/build/SparkleTools/Build/Products" -type f -name "$tool_name" -perm -111 -print -quit 2>/dev/null || true)"
+        if [[ -n "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    fi
+
     return 1
 }
 
@@ -29,7 +47,7 @@ tool="$(find_sparkle_tool generate_keys)" || {
     exit 1
 }
 
-"$tool"
+"$tool" "$@"
 
 cat >&2 <<'EOF'
 Keep the private key outside git. If you export it, store it in an encrypted vault or keychain export, not in the repository.
