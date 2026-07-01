@@ -2,11 +2,15 @@ import SwiftUI
 
 struct SharePodsPopover: View {
     @ObservedObject var state: SharePodsState
+    var checkForUpdates: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
             devicesSection
+            if state.isSharingActive {
+                mixerSection
+            }
             primaryActions
         }
         .padding(18)
@@ -40,14 +44,56 @@ struct SharePodsPopover: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            if state.sortedDevices.isEmpty {
-                Text("No output devices found.")
+            if state.visibleDevices.isEmpty {
+                Text("No sharable output devices found.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 6)
             } else {
-                ForEach(state.sortedDevices) { device in
-                    DeviceCard(device: device)
+                ForEach(state.visibleDevices) { device in
+                    Button {
+                        state.toggleDeviceSelection(device.uid)
+                    } label: {
+                        DeviceCard(device: device, isSelected: state.selectedDeviceUIDs.contains(device.uid))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.isSharingActive || !device.isSelectableForSharing)
+                }
+            }
+        }
+    }
+
+    private var mixerSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Mixer")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            ForEach(sharedDevices) { device in
+                HStack(alignment: .center, spacing: 12) {
+                    Text(device.name)
+                        .font(.subheadline)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 8)
+
+                    if let volume = state.sharedDeviceVolumes[device.uid] {
+                        Slider(value: sharedVolumeBinding(for: device.uid), in: 0...1)
+                            .frame(width: 122)
+                        Text("\(Int((volume * 100).rounded()))%")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 42, alignment: .trailing)
+                    } else {
+                        Slider(value: .constant(0), in: 0...1)
+                            .disabled(true)
+                            .frame(width: 122)
+                        Text("Unavailable")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 78, alignment: .trailing)
+                    }
                 }
             }
         }
@@ -73,6 +119,12 @@ struct SharePodsPopover: View {
 
                 Button("Refresh") {
                     state.refresh()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button("Check for Updates…") {
+                    checkForUpdates()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -104,6 +156,17 @@ struct SharePodsPopover: View {
         case .issue:
             return .orange
         }
+    }
+
+    private var sharedDevices: [AudioOutputDevice] {
+        state.sortedDevices.filter { state.selectedDeviceUIDs.contains($0.uid) }
+    }
+
+    private func sharedVolumeBinding(for uid: String) -> Binding<Double> {
+        Binding(
+            get: { Double(state.sharedDeviceVolumes[uid] ?? 0) },
+            set: { _ = state.setSharedVolume(Float($0), for: uid) }
+        )
     }
 
     private func performPrimaryAction() {

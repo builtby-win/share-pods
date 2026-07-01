@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DeviceCard: View {
     let device: AudioOutputDevice
+    var isSelected = false
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -11,7 +12,7 @@ struct DeviceCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "speaker.wave.2")
+            Image(systemName: device.systemImageName)
                 .font(.system(size: 22, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(device.isConnected ? .primary : .secondary)
@@ -28,6 +29,11 @@ struct DeviceCard: View {
             }
 
             Spacer(minLength: 12)
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.blue)
+            }
+
 
             Text(device.status.rawValue)
                 .font(.caption2.weight(.semibold))
@@ -40,7 +46,7 @@ struct DeviceCard: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08))
+                .strokeBorder(isSelected ? Color.blue.opacity(0.45) : Color.primary.opacity(0.08))
         }
         .opacity(device.isConnected ? 1 : 0.54)
     }

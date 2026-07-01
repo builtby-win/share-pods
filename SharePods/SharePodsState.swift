@@ -52,7 +52,8 @@ final class SharePodsState: ObservableObject {
     @Published private(set) var devices: [AudioOutputDevice]
     @Published private(set) var autoShareEnabled: Bool
     @Published private(set) var issueMessage: String?
-
+    @Published private(set) var selectedDeviceUIDs: Set<String>
+    @Published private(set) var sharedDeviceVolumes: [String: Float]
     private let store: KnownDevicesStore
     private let coreAudio: CoreAudioManaging
     private var sharingDeviceUIDs: Set<String>
@@ -70,12 +71,17 @@ final class SharePodsState: ObservableObject {
         self.issueMessage = nil
         self.sharingDeviceUIDs = []
         self.operationIssueMessage = nil
-
+        self.selectedDeviceUIDs = []
+        self.sharedDeviceVolumes = [:]
         _ = refreshDevices(triggerAutoShare: true)
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refresh()
             }
+        }
+
+        coreAudio.setDeviceChangeHandler { [weak self] in
+            self?.refresh()
         }
     }
 
@@ -89,6 +95,18 @@ final class SharePodsState: ObservableObject {
 
     var sortedDevices: [AudioOutputDevice] {
         devices
+    }
+
+    var visibleDevices: [AudioOutputDevice] {
+        devices.filter(\.isVisibleShareOutput)
+    }
+
+    var otherOutputDevices: [AudioOutputDevice] {
+        devices.filter { !$0.isVisibleShareOutput }
+    }
+
+    var canStartSharing: Bool {
+        Self.selectedPair(from: selectedDeviceUIDs, devices: devices) != nil
     }
 
     var mode: SharePodsMode {
@@ -120,6 +138,20 @@ final class SharePodsState: ObservableObject {
         }
     }
 
+    func toggleDeviceSelection(_ uid: String) {
+        guard sharingDeviceUIDs.isEmpty,
+              let device = devices.first(where: { $0.uid == uid }),
+              device.isSelectableForSharing else {
+            return
+        }
+
+        if selectedDeviceUIDs.contains(uid) {
+            selectedDeviceUIDs.remove(uid)
+        } else if selectedDeviceUIDs.count < 2 {
+            selectedDeviceUIDs.insert(uid)
+        }
+    }
+
     func startSharing() {
         guard refreshDevices(triggerAutoShare: false) else {
             return
@@ -127,7 +159,8 @@ final class SharePodsState: ObservableObject {
 
         guard let pair = Self.registeredPairForSharing(
             registeredPair: store.registeredPair,
-            devices: sortedDevices
+            devices: sortedDevices,
+            selectedDeviceUIDs: selectedDeviceUIDs
         ) else {
             return
         }
@@ -146,7 +179,9 @@ final class SharePodsState: ObservableObject {
             try coreAudio.startSharing(using: pair.orderedUIDs)
             store.registeredPair = pair
             sharingDeviceUIDs = Set(pair.orderedUIDs)
+            selectedDeviceUIDs = Set(pair.orderedUIDs)
             devices = Self.sortDevices(Self.applySharingState(to: devices, sharingDeviceUIDs: sharingDeviceUIDs))
+            refreshSharedDeviceVolumes()
             operationIssueMessage = nil
             updateIssueMessage()
             store.upsertKnownDevices(devices)
@@ -165,12 +200,52 @@ final class SharePodsState: ObservableObject {
             try coreAudio.stopSharing(restoring: store.previousOutputUID)
             operationIssueMessage = nil
             sharingDeviceUIDs = []
+            sharedDeviceVolumes = [:]
             devices = Self.sortDevices(Self.applySharingState(to: devices, sharingDeviceUIDs: sharingDeviceUIDs))
             updateIssueMessage()
             store.upsertKnownDevices(devices)
         } catch {
             operationIssueMessage = error.localizedDescription
             updateIssueMessage()
+        }
+    }
+
+    @discardableResult
+    func adjustSharedVolume(by delta: Float) -> Bool {
+        guard !sharingDeviceUIDs.isEmpty else {
+            return false
+        }
+
+        do {
+            try coreAudio.adjustVolume(for: Array(sharingDeviceUIDs), by: delta)
+            refreshSharedDeviceVolumes()
+            operationIssueMessage = nil
+            updateIssueMessage()
+            return true
+        } catch {
+            operationIssueMessage = error.localizedDescription
+            updateIssueMessage()
+            return false
+        }
+    }
+
+    @discardableResult
+    func setSharedVolume(_ volume: Float, for uid: String) -> Bool {
+        let clampedVolume = min(1, max(0, volume))
+        guard sharingDeviceUIDs.contains(uid), sharedDeviceVolumes[uid] != nil else {
+            return false
+        }
+
+        do {
+            try coreAudio.setVolume(clampedVolume, for: uid)
+            sharedDeviceVolumes[uid] = clampedVolume
+            operationIssueMessage = nil
+            updateIssueMessage()
+            return true
+        } catch {
+            operationIssueMessage = error.localizedDescription
+            updateIssueMessage()
+            return false
         }
     }
 
@@ -185,6 +260,27 @@ final class SharePodsState: ObservableObject {
         updateIssueMessage()
         _ = refreshDevices(triggerAutoShare: true)
     }
+
+    private func refreshSharedDeviceVolumes() {
+        guard !sharingDeviceUIDs.isEmpty else {
+            sharedDeviceVolumes = [:]
+            return
+        }
+
+        var refreshedVolumes: [String: Float] = [:]
+        for uid in sharingDeviceUIDs {
+            do {
+                if let volume = try coreAudio.volume(for: uid) {
+                    refreshedVolumes[uid] = volume
+                }
+            } catch {
+                continue
+            }
+        }
+
+        sharedDeviceVolumes = refreshedVolumes
+    }
+
 
     static func mergeDevices(
         liveDevices: [AudioOutputDevice],
@@ -204,7 +300,8 @@ final class SharePodsState: ObservableObject {
                 name: liveDevice.name.isEmpty ? (bestKnownName ?? liveDevice.name) : liveDevice.name,
                 lastSeen: max(lastSeen, now),
                 isConnected: true,
-                isSharing: sharingDeviceUIDs.contains(liveDevice.uid)
+                isSharing: sharingDeviceUIDs.contains(liveDevice.uid),
+                transport: liveDevice.transport == .unknown ? (knownDevice?.transport ?? .unknown) : liveDevice.transport
             )
         }
 
@@ -235,7 +332,7 @@ final class SharePodsState: ObservableObject {
             return .sharing
         }
 
-        if connectedUIDs.count >= 2 {
+        if devices.filter(\.isSelectableForSharing).count >= 2 {
             return .ready
         }
 
@@ -262,28 +359,53 @@ final class SharePodsState: ObservableObject {
 
     static func registeredPairForSharing(
         registeredPair: RegisteredDevicePair?,
-        devices: [AudioOutputDevice]
+        devices: [AudioOutputDevice],
+        selectedDeviceUIDs: Set<String> = []
     ) -> RegisteredDevicePair? {
-        let connectedUIDs = Set(devices.filter { $0.isConnected }.map(\.uid))
-        if let registeredPair, registeredPair.isConnected(in: connectedUIDs) {
+        if let selectedPair = selectedPair(from: selectedDeviceUIDs, devices: devices) {
+            return selectedPair
+        }
+
+        let selectableUIDs = Set(devices.filter(\.isSelectableForSharing).map(\.uid))
+        if let registeredPair, registeredPair.isConnected(in: selectableUIDs) {
             return registeredPair
         }
 
-        let connectedDevices = devices.filter { $0.isConnected }
-        guard connectedDevices.count >= 2 else {
+        let autoSelectedDevices = devices.filter(\.shouldAutoSelectForSharing)
+        guard autoSelectedDevices.count >= 2 else {
             return nil
         }
 
         return RegisteredDevicePair(
-            firstUID: connectedDevices[0].uid,
-            secondUID: connectedDevices[1].uid
+            firstUID: autoSelectedDevices[0].uid,
+            secondUID: autoSelectedDevices[1].uid
         )
+    }
+
+    static func selectedPair(
+        from selectedDeviceUIDs: Set<String>,
+        devices: [AudioOutputDevice]
+    ) -> RegisteredDevicePair? {
+        guard selectedDeviceUIDs.count == 2 else {
+            return nil
+        }
+
+        let selectedDevices = devices.filter { selectedDeviceUIDs.contains($0.uid) && $0.isSelectableForSharing }
+        guard selectedDevices.count == 2 else {
+            return nil
+        }
+
+        return RegisteredDevicePair(firstUID: selectedDevices[0].uid, secondUID: selectedDevices[1].uid)
     }
 
     static func sortDevices(_ devices: [AudioOutputDevice]) -> [AudioOutputDevice] {
         devices.sorted { left, right in
             if left.isConnected != right.isConnected {
                 return left.isConnected && !right.isConnected
+            }
+
+            if left.shareListRank != right.shareListRank {
+                return left.shareListRank < right.shareListRank
             }
 
             if left.lastSeen != right.lastSeen {
@@ -307,6 +429,7 @@ final class SharePodsState: ObservableObject {
 
     private func refreshDevices(triggerAutoShare: Bool) -> Bool {
         do {
+            try recoverOrphanedSharePodsAggregateIfNeeded()
             let liveDevices = try coreAudio.refreshOutputDevices()
             let knownDevices = store.loadKnownDevices()
             devices = Self.mergeDevices(
@@ -315,6 +438,9 @@ final class SharePodsState: ObservableObject {
                 sharingDeviceUIDs: sharingDeviceUIDs
             )
             store.upsertKnownDevices(devices)
+            syncSelectedDevices()
+            refreshSharedDeviceVolumes()
+
             operationIssueMessage = nil
             updateIssueMessage()
 
@@ -330,11 +456,21 @@ final class SharePodsState: ObservableObject {
         }
     }
 
+    private func recoverOrphanedSharePodsAggregateIfNeeded() throws {
+        guard sharingDeviceUIDs.isEmpty else {
+            return
+        }
+
+        if try coreAudio.removeSharePodsAggregateIfNeeded(restoring: store.previousOutputUID) {
+            store.previousOutputUID = nil
+        }
+    }
+
     private func maybeAutoShareIfNeeded() {
         guard Self.shouldAutoShare(
             autoShareEnabled: autoShareEnabled,
             registeredPair: store.registeredPair,
-            connectedUIDs: Set(connectedDevices.map(\.uid)),
+            connectedUIDs: Set(devices.filter(\.isSelectableForSharing).map(\.uid)),
             sharingDeviceUIDs: sharingDeviceUIDs,
             issueMessage: issueMessage
         ) else {
@@ -342,6 +478,38 @@ final class SharePodsState: ObservableObject {
         }
 
         startSharing()
+    }
+
+    private func syncSelectedDevices() {
+        let selectableUIDs = Set(devices.filter(\.isSelectableForSharing).map(\.uid))
+
+        if !sharingDeviceUIDs.isEmpty {
+            selectedDeviceUIDs = sharingDeviceUIDs.intersection(selectableUIDs)
+            return
+        }
+
+        selectedDeviceUIDs.formIntersection(selectableUIDs)
+        let autoSelection = Self.autoSelectedDeviceUIDs(for: devices, registeredPair: store.registeredPair)
+        if selectedDeviceUIDs.isEmpty || (selectedDeviceUIDs.count < 2 && autoSelection.count >= 2) {
+            selectedDeviceUIDs = autoSelection
+        }
+    }
+
+    private static func autoSelectedDeviceUIDs(
+        for devices: [AudioOutputDevice],
+        registeredPair: RegisteredDevicePair?
+    ) -> Set<String> {
+        let selectableUIDs = Set(devices.filter(\.isSelectableForSharing).map(\.uid))
+        if let registeredPair, registeredPair.isConnected(in: selectableUIDs) {
+            return Set(registeredPair.orderedUIDs)
+        }
+
+        let headphones = devices.filter(\.shouldAutoSelectForSharing)
+        if headphones.count >= 2 {
+            return Set(headphones.prefix(2).map(\.uid))
+        }
+
+        return Set(headphones.map(\.uid))
     }
 
     private func updateIssueMessage() {

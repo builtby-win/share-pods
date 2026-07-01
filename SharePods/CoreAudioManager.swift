@@ -14,6 +14,7 @@ enum CoreAudioError: LocalizedError, Equatable {
     case aggregateDestructionFailed(OSStatus)
     case defaultOutputUnavailable(OSStatus)
     case defaultOutputWriteFailed(OSStatus)
+    case volumeWriteFailed(OSStatus)
     case insufficientDevices
 
     var errorDescription: String? {
@@ -32,6 +33,8 @@ enum CoreAudioError: LocalizedError, Equatable {
             return "Couldn’t read the current default output device (status \(status))."
         case .defaultOutputWriteFailed(let status):
             return "Couldn’t set the default output device (status \(status))."
+        case .volumeWriteFailed(let status):
+            return "Couldn’t set the shared output volume (status \(status))."
         case .insufficientDevices:
             return "Connect two output devices before starting sharing."
         }
@@ -43,9 +46,22 @@ protocol CoreAudioManaging {
     func currentDefaultOutputDeviceUID() throws -> String?
     func startSharing(using subdeviceUIDs: [String]) throws
     func stopSharing(restoring previousOutputUID: String?) throws
+    func removeSharePodsAggregateIfNeeded(restoring previousOutputUID: String?) throws -> Bool
+    func volume(for uid: String) throws -> Float?
+    func setVolume(_ volume: Float, for uid: String) throws
+    func adjustVolume(for subdeviceUIDs: [String], by delta: Float) throws
+    func setDeviceChangeHandler(_ handler: @escaping @MainActor () -> Void)
 }
 
 final class CoreAudioManager: CoreAudioManaging {
+    private var deviceChangeHandler: (@MainActor () -> Void)?
+    private var deviceChangeListenerInstalled = false
+    private lazy var deviceChangeListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+        Task { @MainActor in
+            self?.deviceChangeHandler?()
+        }
+    }
+
     func refreshOutputDevices() throws -> [AudioOutputDevice] {
         let deviceIDs = try fetchDeviceIDs()
         let aggregateDeviceID = try translateUIDToDeviceID(SharePodsAudioConstants.aggregateUID)
@@ -65,7 +81,10 @@ final class CoreAudioManager: CoreAudioManaging {
                 return nil
             }
 
-            return AudioOutputDevice(uid: uid, name: name, lastSeen: now, isConnected: true)
+            let transport = copyUInt32Property(deviceID: deviceID, selector: kAudioDevicePropertyTransportType)
+                .map(AudioOutputDevice.Transport.init(coreAudioTransportType:)) ?? .unknown
+
+            return AudioOutputDevice(uid: uid, name: name, lastSeen: now, isConnected: true, transport: transport)
         }
     }
 
@@ -80,6 +99,22 @@ final class CoreAudioManager: CoreAudioManaging {
 
         return uid
     }
+    func volume(for uid: String) throws -> Float? {
+        guard let deviceID = try translateUIDToDeviceID(uid) else {
+            throw CoreAudioError.outputDeviceNotFound(uid)
+        }
+
+        return volumeValue(deviceID: deviceID)
+    }
+
+    func setVolume(_ volume: Float, for uid: String) throws {
+        guard let deviceID = try translateUIDToDeviceID(uid) else {
+            throw CoreAudioError.outputDeviceNotFound(uid)
+        }
+
+        try setVolume(min(1, max(0, volume)), deviceID: deviceID)
+    }
+
 
     func startSharing(using subdeviceUIDs: [String]) throws {
         let uniqueUIDs = Array(NSOrderedSet(array: subdeviceUIDs)) as? [String] ?? subdeviceUIDs
@@ -102,12 +137,38 @@ final class CoreAudioManager: CoreAudioManaging {
     }
 
     func stopSharing(restoring previousOutputUID: String?) throws {
-        if let previousOutputUID,
-           let deviceID = try? translateUIDToDeviceID(previousOutputUID) {
-            try? setDefaultOutputDevice(deviceID)
+        _ = try removeSharePodsAggregateIfNeeded(restoring: previousOutputUID)
+    }
+
+    func removeSharePodsAggregateIfNeeded(restoring previousOutputUID: String?) throws -> Bool {
+        guard let aggregateDeviceID = try translateUIDToDeviceID(SharePodsAudioConstants.aggregateUID) else {
+            return false
         }
 
-        try destroyExistingAggregateIfNeeded()
+        if let previousOutputUID,
+           let currentDeviceID = try currentDefaultOutputDeviceID(),
+           currentDeviceID == aggregateDeviceID,
+           let previousDeviceID = try? translateUIDToDeviceID(previousOutputUID) {
+            try? setDefaultOutputDevice(previousDeviceID)
+        }
+
+        try destroyAggregateDevice(aggregateDeviceID)
+        return true
+    }
+
+    func adjustVolume(for subdeviceUIDs: [String], by delta: Float) throws {
+        for uid in subdeviceUIDs {
+            guard let deviceID = try translateUIDToDeviceID(uid) else {
+                throw CoreAudioError.outputDeviceNotFound(uid)
+            }
+
+            try adjustVolume(deviceID: deviceID, by: delta)
+        }
+    }
+
+    func setDeviceChangeHandler(_ handler: @escaping @MainActor () -> Void) {
+        deviceChangeHandler = handler
+        installDeviceChangeListenerIfNeeded()
     }
 
     static func aggregateDeviceDescription(for subdeviceUIDs: [String]) -> [String: Any] {
@@ -131,6 +192,50 @@ final class CoreAudioManager: CoreAudioManaging {
             kAudioAggregateDeviceIsStackedKey as String: NSNumber(value: 0),
             kAudioAggregateDeviceMainSubDeviceKey as String: subdeviceUIDs[0]
         ]
+    }
+
+    deinit {
+        removeDeviceChangeListenerIfNeeded()
+    }
+
+    private func installDeviceChangeListenerIfNeeded() {
+        guard !deviceChangeListenerInstalled else {
+            return
+        }
+
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            DispatchQueue.main,
+            deviceChangeListener
+        )
+
+        if status == noErr {
+            deviceChangeListenerInstalled = true
+        }
+    }
+
+    private func removeDeviceChangeListenerIfNeeded() {
+        guard deviceChangeListenerInstalled else {
+            return
+        }
+
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectRemovePropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            DispatchQueue.main,
+            deviceChangeListener
+        )
     }
 
     private func fetchDeviceIDs() throws -> [AudioObjectID] {
@@ -205,6 +310,10 @@ final class CoreAudioManager: CoreAudioManaging {
             return
         }
 
+        try destroyAggregateDevice(aggregateDeviceID)
+    }
+
+    private func destroyAggregateDevice(_ aggregateDeviceID: AudioObjectID) throws {
         let status = AudioHardwareDestroyAggregateDevice(aggregateDeviceID)
         guard status == noErr else {
             throw CoreAudioError.aggregateDestructionFailed(status)
@@ -290,6 +399,92 @@ final class CoreAudioManager: CoreAudioManaging {
         }
 
         return value as String
+    }
+
+    private func copyUInt32Property(deviceID: AudioObjectID, selector: AudioObjectPropertySelector) -> UInt32? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var value: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
+        guard status == noErr else {
+            return nil
+        }
+
+        return value
+    }
+
+    private func adjustVolume(deviceID: AudioObjectID, by delta: Float) throws {
+        guard let currentVolume = volumeValue(deviceID: deviceID) else {
+            return
+        }
+
+        let nextVolume = min(1, max(0, currentVolume + delta))
+        for element in [kAudioObjectPropertyElementMain, 1, 2] {
+            try setVolume(nextVolume, deviceID: deviceID, element: element)
+        }
+    }
+
+    private func volumeValue(deviceID: AudioObjectID) -> Float? {
+        for element in [kAudioObjectPropertyElementMain, 1, 2] {
+            var address = volumeAddress(element: element)
+            guard AudioObjectHasProperty(deviceID, &address) else {
+                continue
+            }
+
+            var value: Float = 0
+            var size = UInt32(MemoryLayout<Float>.size)
+            guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value) == noErr else {
+                continue
+            }
+
+            return value
+        }
+
+        return nil
+    }
+
+    private func setVolume(_ volume: Float, deviceID: AudioObjectID) throws {
+        for element in [kAudioObjectPropertyElementMain, 1, 2] {
+            try setVolume(volume, deviceID: deviceID, element: element)
+        }
+    }
+
+    private func setVolume(_ volume: Float, deviceID: AudioObjectID, element: AudioObjectPropertyElement) throws {
+        var address = volumeAddress(element: element)
+        guard AudioObjectHasProperty(deviceID, &address) else {
+            return
+        }
+
+        var isSettable = DarwinBoolean(false)
+        guard AudioObjectIsPropertySettable(deviceID, &address, &isSettable) == noErr, isSettable.boolValue else {
+            return
+        }
+
+        var mutableVolume = volume
+        let status = AudioObjectSetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            UInt32(MemoryLayout<Float>.size),
+            &mutableVolume
+        )
+        guard status == noErr else {
+            throw CoreAudioError.volumeWriteFailed(status)
+        }
+    }
+
+    private func volumeAddress(element: AudioObjectPropertyElement) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: element
+        )
     }
 
     private func translateUIDToDeviceID(_ uid: String) throws -> AudioObjectID? {

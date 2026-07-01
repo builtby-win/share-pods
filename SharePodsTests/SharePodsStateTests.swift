@@ -26,13 +26,202 @@ final class SharePodsStateTests: XCTestCase {
         XCTAssertFalse(merged.last?.isConnected ?? true)
     }
 
+    func testHeadphonesAndSpeakersStayVisibleButOnlyHeadphonesAutoSelect() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.outputDevices = [
+            AudioOutputDevice(uid: "airpods", name: "Winnie AirPods", isConnected: true, transport: .bluetooth),
+            AudioOutputDevice(uid: "speaker", name: "MacBook Pro Speakers", isConnected: true, transport: .builtIn),
+            AudioOutputDevice(uid: "blackhole", name: "BlackHole 2ch", isConnected: true, transport: .virtual),
+            AudioOutputDevice(uid: "monitor", name: "Studio Display", isConnected: true, transport: .displayPort)
+        ]
+
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        XCTAssertEqual(state.visibleDevices.map(\.uid), ["airpods", "speaker"])
+        XCTAssertEqual(state.otherOutputDevices.map(\.uid), ["blackhole", "monitor"])
+        XCTAssertEqual(state.selectedDeviceUIDs, Set(["airpods"]))
+        XCTAssertFalse(state.canStartSharing)
+    }
+
+    func testVirtualDeviceNamedLikeHeadphonesStaysHiddenAndUnselected() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.outputDevices = [
+            AudioOutputDevice(uid: "airpods", name: "Winnie AirPods", isConnected: true, transport: .bluetooth),
+            AudioOutputDevice(uid: "virtual-airpods", name: "Virtual AirPods Output", isConnected: true, transport: .virtual)
+        ]
+
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        XCTAssertEqual(state.visibleDevices.map(\.uid), ["airpods"])
+        XCTAssertEqual(state.selectedDeviceUIDs, Set(["airpods"]))
+        XCTAssertFalse(state.canStartSharing)
+    }
+
+    func testCoreAudioDeviceChangeRefreshesVisibleDevices() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.outputDevices = [
+            AudioOutputDevice(uid: "airpods", name: "Winnie AirPods", isConnected: true, transport: .bluetooth)
+        ]
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        coreAudio.outputDevices.append(
+            AudioOutputDevice(uid: "beats", name: "Beats Fit Pro", isConnected: true, transport: .bluetooth)
+        )
+        coreAudio.simulateDeviceChange()
+
+        XCTAssertEqual(Set(state.visibleDevices.map(\.uid)), Set(["airpods", "beats"]))
+        XCTAssertEqual(state.selectedDeviceUIDs, Set(["airpods", "beats"]))
+        XCTAssertTrue(state.canStartSharing)
+    }
+
+
+    func testExactlyTwoBluetoothHeadphonesAutoSelectForSharing() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.outputDevices = [
+            AudioOutputDevice(uid: "airpods", name: "Winnie AirPods", isConnected: true, transport: .bluetooth),
+            AudioOutputDevice(uid: "beats", name: "Beats Fit Pro", isConnected: true, transport: .bluetooth),
+            AudioOutputDevice(uid: "speaker", name: "MacBook Pro Speakers", isConnected: true, transport: .builtIn)
+        ]
+
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        XCTAssertEqual(state.selectedDeviceUIDs, Set(["airpods", "beats"]))
+        XCTAssertTrue(state.canStartSharing)
+    }
+
+    func testStartSharingLoadsReadableSharedVolumes() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.readableVolumes = ["alpha": 0.25, "bravo": 0.75]
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        state.startSharing()
+
+        XCTAssertEqual(state.mode, .sharing)
+        XCTAssertEqual(state.sharedDeviceVolumes["alpha"] ?? Float(-1), 0.25, accuracy: 0.0001)
+        XCTAssertEqual(state.sharedDeviceVolumes["bravo"] ?? Float(-1), 0.75, accuracy: 0.0001)
+    }
+
+    func testSettingSharedVolumeWritesOnlyThatUID() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.readableVolumes = ["alpha": 0.25, "bravo": 0.75]
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        state.startSharing()
+        XCTAssertTrue(state.setSharedVolume(0.6, for: "alpha"))
+
+        XCTAssertEqual(coreAudio.volumeWrites.count, 1)
+        XCTAssertEqual(coreAudio.volumeWrites.first?.uid ?? "", "alpha")
+        XCTAssertEqual(coreAudio.volumeWrites.first?.volume ?? Float(-1), 0.6, accuracy: 0.0001)
+        XCTAssertEqual(state.sharedDeviceVolumes["alpha"] ?? Float(-1), 0.6, accuracy: 0.0001)
+        XCTAssertEqual(state.sharedDeviceVolumes["bravo"] ?? Float(-1), 0.75, accuracy: 0.0001)
+    }
+
+    func testMissingSharedVolumeDataDoesNotBlockSharing() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.readableVolumes = ["alpha": 0.25]
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        state.startSharing()
+
+        XCTAssertEqual(state.mode, .sharing)
+        XCTAssertEqual(state.sharedDeviceVolumes["alpha"] ?? Float(-1), 0.25, accuracy: 0.0001)
+        XCTAssertNil(state.sharedDeviceVolumes["bravo"])
+    }
+
+    func testStartSharingUsesSelectedSpeakerWhenUserChoosesIt() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.outputDevices = [
+            AudioOutputDevice(uid: "airpods", name: "Winnie AirPods", isConnected: true, transport: .bluetooth),
+            AudioOutputDevice(uid: "speaker", name: "MacBook Pro Speakers", isConnected: true, transport: .builtIn)
+        ]
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        state.toggleDeviceSelection("speaker")
+        state.startSharing()
+
+        XCTAssertEqual(coreAudio.startedUIDs, ["airpods", "speaker"])
+        XCTAssertEqual(state.mode, .sharing)
+    }
+
+    func testStaleRegisteredPairDoesNotBlockManualSpeakerSelection() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        store.registeredPair = RegisteredDevicePair(firstUID: "monitor", secondUID: "display")
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.outputDevices = [
+            AudioOutputDevice(uid: "airpods", name: "Winnie AirPods", isConnected: true, transport: .bluetooth),
+            AudioOutputDevice(uid: "speaker", name: "MacBook Pro Speakers", isConnected: true, transport: .builtIn),
+            AudioOutputDevice(uid: "monitor", name: "31.5 Monitor", isConnected: true, transport: .aggregate),
+            AudioOutputDevice(uid: "display", name: "ARZOPA-315", isConnected: true, transport: .displayPort)
+        ]
+
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+        state.toggleDeviceSelection("speaker")
+        state.startSharing()
+
+        XCTAssertEqual(coreAudio.startedUIDs, ["airpods", "speaker"])
+    }
+
+    func testLaunchTearsDownOrphanedSharePodsAggregateOutput() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        store.previousOutputUID = "speaker"
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.currentOutputUID = SharePodsAudioConstants.aggregateUID
+        _ = SharePodsState(store: store, coreAudio: coreAudio)
+
+        XCTAssertEqual(coreAudio.stopCallCount, 1)
+        XCTAssertEqual(coreAudio.currentOutputUID, "speaker")
+    }
+
+    func testLaunchTearsDownInactiveSharePodsAggregateEvenWhenSystemOutputAlreadyRestored() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.currentOutputUID = "speaker"
+        coreAudio.hasSharePodsAggregate = true
+        _ = SharePodsState(store: store, coreAudio: coreAudio)
+
+        XCTAssertEqual(coreAudio.stopCallCount, 1)
+        XCTAssertEqual(coreAudio.currentOutputUID, "speaker")
+    }
+
     func testModeDerivationPrioritizesIssueSharingReadyAndIdle() {
         let connectedDevices = [
-            AudioOutputDevice(uid: "alpha", name: "Alpha", isConnected: true),
-            AudioOutputDevice(uid: "bravo", name: "Bravo", isConnected: true)
+            AudioOutputDevice(uid: "alpha", name: "Alpha", isConnected: true, transport: .bluetooth),
+            AudioOutputDevice(uid: "bravo", name: "Bravo", isConnected: true, transport: .bluetooth)
         ]
         let idleDevices = [
-            AudioOutputDevice(uid: "alpha", name: "Alpha", isConnected: true)
+            AudioOutputDevice(uid: "alpha", name: "Alpha", isConnected: true, transport: .bluetooth)
         ]
 
         XCTAssertEqual(
@@ -179,6 +368,31 @@ final class SharePodsStateTests: XCTestCase {
         XCTAssertEqual(state.mode, .ready)
     }
 
+    func testVolumeKeysAdjustSharingDevicesOnlyWhileSharing() {
+        let (store, cleanup) = makeIsolatedStore()
+        defer { cleanup() }
+
+        let coreAudio = TestCoreAudioManager()
+        coreAudio.readableVolumes = ["alpha": 0.25, "bravo": 0.75]
+        let state = SharePodsState(store: store, coreAudio: coreAudio)
+
+        state.startSharing()
+        state.adjustSharedVolume(by: 0.1)
+
+        XCTAssertEqual(state.sharedDeviceVolumes["alpha"] ?? Float(-1), 0.35, accuracy: 0.0001)
+        XCTAssertEqual(state.sharedDeviceVolumes["bravo"] ?? Float(-1), 0.85, accuracy: 0.0001)
+
+        state.stopSharing()
+        XCTAssertTrue(state.sharedDeviceVolumes.isEmpty)
+
+        state.adjustSharedVolume(by: -0.1)
+
+        XCTAssertEqual(coreAudio.volumeAdjustments.count, 1)
+        XCTAssertEqual(Set(coreAudio.volumeAdjustments.first?.uids ?? []), Set(["alpha", "bravo"]))
+        XCTAssertEqual(coreAudio.volumeAdjustments.first?.delta ?? Float(-1), 0.1, accuracy: 0.0001)
+    }
+
+
     func testKnownDevicesStoreRoundTripsThroughIsolatedUserDefaults() {
         let suiteName = "SharePodsTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -226,13 +440,20 @@ final class SharePodsStateTests: XCTestCase {
 
 private final class TestCoreAudioManager: CoreAudioManaging {
     var outputDevices = [
-        AudioOutputDevice(uid: "alpha", name: "Alpha", isConnected: true),
-        AudioOutputDevice(uid: "bravo", name: "Bravo", isConnected: true)
+        AudioOutputDevice(uid: "alpha", name: "Alpha", isConnected: true, transport: .bluetooth),
+        AudioOutputDevice(uid: "bravo", name: "Bravo", isConnected: true, transport: .bluetooth)
     ]
+    var readableVolumes: [String: Float] = [:]
     var refreshError: Error?
     var currentOutputUID: String? = "system-output"
     var stopError: Error?
+    var hasSharePodsAggregate = false
     private(set) var stopCallCount = 0
+    private(set) var startedUIDs: [String] = []
+    private(set) var volumeAdjustments: [(uids: [String], delta: Float)] = []
+    private(set) var volumeReads: [String] = []
+    private(set) var volumeWrites: [(uid: String, volume: Float)] = []
+    private var deviceChangeHandler: (@MainActor () -> Void)?
 
     func refreshOutputDevices() throws -> [AudioOutputDevice] {
         if let refreshError {
@@ -242,16 +463,68 @@ private final class TestCoreAudioManager: CoreAudioManaging {
         return outputDevices
     }
 
+    func setDeviceChangeHandler(_ handler: @escaping @MainActor () -> Void) {
+        deviceChangeHandler = handler
+    }
+
+    @MainActor func simulateDeviceChange() {
+        deviceChangeHandler?()
+    }
+
     func currentDefaultOutputDeviceUID() throws -> String? {
         currentOutputUID
     }
 
-    func startSharing(using subdeviceUIDs: [String]) throws {}
+    func volume(for uid: String) throws -> Float? {
+        volumeReads.append(uid)
+        return readableVolumes[uid]
+    }
+
+    func setVolume(_ volume: Float, for uid: String) throws {
+        let clampedVolume = min(1, max(0, volume))
+        volumeWrites.append((uid, clampedVolume))
+        readableVolumes[uid] = clampedVolume
+    }
+
+    func removeSharePodsAggregateIfNeeded(restoring previousOutputUID: String?) throws -> Bool {
+        guard hasSharePodsAggregate || currentOutputUID == SharePodsAudioConstants.aggregateUID else {
+            return false
+        }
+
+        stopCallCount += 1
+        if let stopError {
+            throw stopError
+        }
+
+        hasSharePodsAggregate = false
+        if currentOutputUID == SharePodsAudioConstants.aggregateUID {
+            currentOutputUID = previousOutputUID
+        }
+        return true
+    }
+
+    func startSharing(using subdeviceUIDs: [String]) throws {
+        startedUIDs = subdeviceUIDs
+        currentOutputUID = SharePodsAudioConstants.aggregateUID
+    }
+
+    func adjustVolume(for subdeviceUIDs: [String], by delta: Float) throws {
+        volumeAdjustments.append((subdeviceUIDs, delta))
+        for uid in subdeviceUIDs {
+            guard let currentVolume = readableVolumes[uid] else {
+                continue
+            }
+
+            readableVolumes[uid] = min(1, max(0, currentVolume + delta))
+        }
+    }
 
     func stopSharing(restoring previousOutputUID: String?) throws {
         stopCallCount += 1
         if let stopError {
             throw stopError
         }
+
+        currentOutputUID = previousOutputUID
     }
 }

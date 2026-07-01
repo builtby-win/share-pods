@@ -16,6 +16,7 @@
 		00000000000000000000002A /* DeviceCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000002C /* DeviceCard.swift */; };
 		00000000000000000000002B /* SharePodsPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000002D /* SharePodsPopover.swift */; };
 		00000000000000000000000F /* SharePodsStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000026 /* SharePodsStateTests.swift */; };
+		000000000000000000000036 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 000000000000000000000037 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +38,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				000000000000000000000036 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -108,6 +110,7 @@
 			);
 			name = SharePods;
 			packageProductDependencies = (
+				000000000000000000000037 /* Sparkle */,
 			);
 			productName = SharePods;
 			productReference = 000000000000000000000004 /* SharePods.app */;
@@ -153,6 +156,25 @@
 /* End PBXTargetDependency section */
 
 
+/* Begin XCRemoteSwiftPackageReference section */
+		000000000000000000000038 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		000000000000000000000037 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 000000000000000000000038 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
+
 /* Begin PBXProject section */
 		000000000000000000000016 /* Project object */ = {
 			isa = PBXProject;
@@ -185,6 +207,9 @@
 			targets = (
 				000000000000000000000014 /* SharePods */,
 				000000000000000000000015 /* SharePodsTests */,
+			);
+			packageReferences = (
+				000000000000000000000038 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 		};
 /* End PBXProject section */
@@ -236,7 +261,8 @@
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_TESTABILITY = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SharePods/Info.plist;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
@@ -258,7 +284,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf-with-dsym;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SharePods/Info.plist;
 				GCC_OPTIMIZATION_LEVEL = s;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
